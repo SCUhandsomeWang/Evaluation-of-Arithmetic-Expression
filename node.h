@@ -95,3 +95,4 @@ void DbNode<ElemType>::ClearLink()
 	m_pPre = NULL;
 }
 #endif
+
