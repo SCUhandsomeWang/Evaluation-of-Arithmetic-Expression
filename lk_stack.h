@@ -1,8 +1,7 @@
-#if !defined(_LK_STACK_H_)
-#include <stddef.h>
+#ifndef _LK_STACK_H_
 #define  _LK_STACK_H_
 #include "SimpleLkList.h"
-
+#include <stddef.h>
 template <class ElemType>
 class LinkStack :private SimpleLkList <ElemType>
 {
