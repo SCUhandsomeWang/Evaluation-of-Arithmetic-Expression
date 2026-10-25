@@ -4,6 +4,9 @@
 #include <iostream>
 #include <string>
 #include <stack>
+#include <sstream>
+#include <vector>
+#include <cctype>
 #include <stdexcept>
 #include "lk_stack.h"
 using namespace std;
@@ -87,67 +90,143 @@ void Calculator<ElemType>::Run()
 {
     optr.Clear();
     opnd.Clear();
-    optr.Push('=');
-    char ch;
-    char priorChar;
-    char optrTop;
     cout << "Please input the infix arithmetic expression, ending with =:" << endl;
-    cin >> ch;
-    priorChar = ch;
-    optr.Top(optrTop);
-    while(ch != '=' || optrTop != '=')
+
+    string expression;
+    getline(cin >> ws, expression);
+    size_t end = expression.find('=');
+    if (end == string::npos)
+        throw invalid_argument("Expression must end with =");
+    expression.erase(end);
+
+    vector<string> postfix;
+    optr.Push('=');
+    bool expectOperand = true;
+
+    for (size_t i = 0; i < expression.length();)
     {
-        optr.Top(optrTop);
-        if(optrTop == '=' && ch == '=')
+        char ch = expression[i];
+        if (isspace(static_cast<unsigned char>(ch)))
         {
-            ElemType ans;
-            opnd.Top(ans);
-            cout << "answer:" << ans << std::endl;
-            return;
+            ++i;
+            continue;
         }
-        if(!IsOperator(ch))
+
+        if (isdigit(static_cast<unsigned char>(ch)) || ch == '.')
         {
-            cin.putback(ch);
-            ElemType num;
-            cin >>num;
-            opnd.Push(num);
-            priorChar = 'n';
-            cin >> ch;
+            if (!expectOperand)
+                throw invalid_argument("Invalid expression: missing operator");
+
+            size_t start = i;
+            bool hasDigit = false;
+            while (i < expression.length() &&
+                   (isdigit(static_cast<unsigned char>(expression[i])) ||
+                    expression[i] == '.'))
+            {
+                hasDigit = hasDigit ||
+                    isdigit(static_cast<unsigned char>(expression[i]));
+                ++i;
+            }
+            if (!hasDigit)
+                throw invalid_argument("Invalid number");
+
+            postfix.push_back(expression.substr(start, i - start));
+            expectOperand = false;
+            continue;
+        }
+
+        if (!IsOperator(ch) || ch == '=')
+            throw invalid_argument("Invalid character in expression");
+
+        if ((ch == '+' || ch == '-') && expectOperand)
+            postfix.push_back("0");
+        else if (expectOperand && ch != '(')
+            throw invalid_argument("Invalid expression: operator position");
+
+        if (ch == '(')
+        {
+            if (!expectOperand)
+                throw invalid_argument("Invalid expression: missing operator");
+            optr.Push(ch);
+            expectOperand = true;
+        }
+        else if (ch == ')')
+        {
+            if (expectOperand)
+                throw invalid_argument("Invalid expression: unexpected ')'");
+
+            char top;
+            bool foundLeftParenthesis = false;
+            while (optr.Top(top) && top != '=')
+            {
+                optr.Pop(top);
+                if (top == '(')
+                {
+                    foundLeftParenthesis = true;
+                    break;
+                }
+                postfix.push_back(string(1, top));
+            }
+            if (!foundLeftParenthesis)
+                throw invalid_argument("Invalid expression: mismatched parentheses");
+            expectOperand = false;
         }
         else
         {
-            if((ch =='+'||ch =='-') && (priorChar =='=' || priorChar =='('))
+            char top;
+            while (optr.Top(top) && top != '=' && top != '(' &&
+                   (OperPriro(top) > OperPriro(ch) ||
+                    (OperPriro(top) == OperPriro(ch) && ch != '^')))
             {
-                opnd.Push(0);
+                optr.Pop(top);
+                postfix.push_back(string(1, top));
             }
-            if((optrTop == ')'&& ch == '('))
-            {
-                throw invalid_argument("Invalid expression: mismatched parentheses");
-            }
-            if(optrTop=='(' && ch == ')')
-            {
-                optr.Pop();
-                priorChar = ch;
-                cin >> ch;
-                continue;
-            }
-            if(ch == '('||OperPriro(optrTop) < OperPriro(ch))
-            {
-                optr.Push(ch);
-                cin >> ch;
-                priorChar = ch;
-            }
-            else
-            {
-                char op;
-                optr.Pop(op);
-                ElemType left, right;
-                Get2Operands(left, right);
-                ElemType res = Operate(left, op, right);
-                opnd.Push(res);
-            }
+            optr.Push(ch);
+            expectOperand = true;
+        }
+        ++i;
+    }
+
+    if (expectOperand)
+        throw invalid_argument("Invalid expression: missing operand");
+
+    char top;
+    while (optr.Top(top) && top != '=')
+    {
+        optr.Pop(top);
+        if (top == '(' || top == ')')
+            throw invalid_argument("Invalid expression: mismatched parentheses");
+        postfix.push_back(string(1, top));
+    }
+
+    cout << "postfix: ";
+    for (size_t i = 0; i < postfix.size(); ++i)
+        cout << postfix[i] << (i + 1 == postfix.size() ? '\n' : ' ');
+
+    for (const string &token : postfix)
+    {
+        if (token.length() > 1 ||
+            !IsOperator(token[0]) || token[0] == '(' || token[0] == ')')
+        {
+            stringstream stream(token);
+            ElemType number;
+            if (!(stream >> number) || !stream.eof())
+                throw invalid_argument("Invalid number");
+            opnd.Push(number);
+        }
+        else
+        {
+            ElemType left, right;
+            if (!opnd.Pop(right) || !opnd.Pop(left))
+                throw invalid_argument("Invalid expression: insufficient operands");
+            opnd.Push(Operate(left, token[0], right));
         }
     }
+
+    ElemType answer;
+    if (!opnd.Pop(answer) || !opnd.IsEmpty())
+        throw invalid_argument("Invalid expression");
+    cout << "answer:" << answer << std::endl;
 }
 
 template <class ElemType>
